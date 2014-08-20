@@ -30,6 +30,9 @@ func ListenOnLocalRandomPort() (net.Listener, int, error) {
 		return nil, 0, err
 	}
 	portStr := strings.TrimPrefix(l.Addr().String(), "127.0.0.1:")
-	port, _ := strconv.ParseInt(portStr, 10, 0)
+	port, err := strconv.ParseInt(portStr, 10, 0)
+	if err != nil {
+		panic(err)
+	}
 	return l, int(port), nil
 }
