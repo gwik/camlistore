@@ -52,6 +52,11 @@ func (ts ThumbnailService) Generate(ref blob.Ref, fetcher blob.Fetcher, writer i
 	done := make(chan bool)
 	command := BuildCmd(ts.thumbnailer, uri, writer)
 	err = command.Start()
+	defer func() {
+		if !command.ProcessState.Exited() {
+			command.Process.Kill()
+		}
+	}()
 	if err != nil {
 		return err
 	}
@@ -66,12 +71,6 @@ func (ts ThumbnailService) Generate(ref blob.Ref, fetcher blob.Fetcher, writer i
 	go func() {
 		command.Wait()
 		done <- true
-	}()
-
-	defer func() {
-		if !command.ProcessState.Exited() {
-			command.Process.Kill()
-		}
 	}()
 
 	select {
