@@ -18,13 +18,10 @@ package videothumbnail
 
 import (
 	"errors"
-	"fmt"
 	"io"
 	"net"
 	"net/http"
 	"net/url"
-	"strconv"
-	"strings"
 	"time"
 
 	"camlistore.org/pkg/blob"
@@ -33,23 +30,41 @@ import (
 // Configuration
 var Thumbnail Thumbnailer = FfmpegThumbnail{}
 
+func LoopbackInterfaceAddr() (net.Addr, error) {
+	interfaces, err := net.Interfaces()
+	if err != nil {
+		return nil, err
+	}
+	for _, inf := range interfaces {
+		if inf.Flags&(net.FlagLoopback|net.FlagUp) == net.FlagLoopback|net.FlagUp {
+			addrs, err := inf.Addrs()
+			if err != nil {
+				continue
+			}
+			if len(addrs) > 0 {
+				return addrs[0], nil
+			}
+		}
+	}
+	return nil, errors.New("No loopback interface found.")
+}
+
 // Listen on random port number and return listener, port and error
-func ListenOnLocalRandomPort() (net.Listener, int, error) {
-	addr := &net.TCPAddr{IP: net.IPv4(127, 0, 0, 1), Port: 0}
-	l, err := net.ListenTCP("tcp4", addr)
+func ListenOnLocalRandomPort() (net.Listener, error) {
+	addr, err := LoopbackInterfaceAddr()
 	if err != nil {
-		return nil, 0, err
+		return nil, err
 	}
-	portStr := strings.TrimPrefix(l.Addr().String(), "127.0.0.1:")
-	port, err := strconv.ParseInt(portStr, 10, 0)
+	ip := net.ParseIP(addr.String())
+	l, err := net.ListenTCP("tcp", &net.TCPAddr{IP: ip, Port: 0})
 	if err != nil {
-		panic(err)
+		return nil, err
 	}
-	return l, int(port), nil
+	return l, nil
 }
 
 func MakeThumbnail(ref blob.Ref, fetcher blob.Fetcher, writer io.Writer) error {
-	listener, port, err := ListenOnLocalRandomPort()
+	listener, err := ListenOnLocalRandomPort()
 	if err != nil {
 		return err
 	}
@@ -57,7 +72,7 @@ func MakeThumbnail(ref blob.Ref, fetcher blob.Fetcher, writer io.Writer) error {
 
 	uri := url.URL{
 		Scheme: "http",
-		Host:   fmt.Sprintf("127.0.0.1:%d", port),
+		Host:   listener.Addr().String(),
 		Path:   ref.String(),
 	}
 
@@ -81,7 +96,6 @@ func MakeThumbnail(ref blob.Ref, fetcher blob.Fetcher, writer io.Writer) error {
 	}()
 
 	defer func() {
-		listener.Close()
 		if !command.ProcessState.Exited() {
 			command.Process.Kill()
 		}
@@ -96,13 +110,3 @@ func MakeThumbnail(ref blob.Ref, fetcher blob.Fetcher, writer io.Writer) error {
 		return errors.New("timeout")
 	}
 }
-
-/*
-
-TODO
-
-- Build HTTP server and deal with shutdown (Close()? on the listener)
-- Communicate port and PID of process to the Handler in order to
-  check them with ident.
-
-*/

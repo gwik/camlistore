@@ -18,9 +18,10 @@ package videothumbnail
 
 import (
 	"crypto"
-	"fmt"
 	"io/ioutil"
 	"os"
+	"strconv"
+	"strings"
 	"testing"
 
 	"camlistore.org/pkg/blob"
@@ -28,25 +29,23 @@ import (
 )
 
 func TestListenOnLocalRandomPort(t *testing.T) {
-	l, port, err := ListenOnLocalRandomPort()
+	l, err := ListenOnLocalRandomPort()
 	if err != nil {
 		t.Fatalf("unexpected error %v", err)
 	}
 
 	defer l.Close()
 
-	if port < 1024 {
-		t.Fatalf("port (%d) must be < 1024", port)
-	}
-
-	if l.Addr().String() != fmt.Sprintf("127.0.0.1:%d", port) {
-		t.Fatalf("expected address (%v) to be 127.0.0.1:%d",
-			l.Addr().String(), port)
+	addr := l.Addr().String()
+	pos := strings.LastIndex(addr, ":")
+	port, _ := strconv.Atoi(addr[:pos])
+	if port < 0 {
+		t.Fatalf("expected port to be 0", port)
 	}
 }
 
 func TestMakeThumbnail(t *testing.T) {
-	inFile, err := os.Open("../../../test/testdata/small.ogv")
+	inFile, err := os.Open("testdata/small.ogv")
 	if err != nil {
 		t.Fatal(err)
 	}
