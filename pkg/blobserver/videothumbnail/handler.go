@@ -17,7 +17,9 @@ limitations under the License.
 package videothumbnail
 
 import (
+	"log"
 	"net/http"
+	"strings"
 
 	"camlistore.org/pkg/blob"
 	"camlistore.org/pkg/blobserver/gethandler"
@@ -26,13 +28,28 @@ import (
 type Handler struct {
 	ref     blob.Ref
 	fetcher blob.Fetcher
+	pid     int
 }
 
 func (handler Handler) ServeHTTP(conn http.ResponseWriter, req *http.Request) {
 
 	// TODO: verify auth with ident
 
-	blobRef, ok := blob.Parse(req.URL.Path)
+	parts := strings.Split(req.URL.Path, "/")
+	if len(parts) < 1 {
+		http.Error(conn, "Malformed GET URL.", 400)
+		return
+	}
+	if parts[0] == "" {
+		parts = parts[1:]
+	}
+	if len(parts) < 1 {
+		http.Error(conn, "Malformed GET URL.", 400)
+		return
+	}
+	ref := parts[0]
+
+	blobRef, ok := blob.Parse(ref)
 	if !ok || !blobRef.Valid() {
 		http.Error(conn, "Malformed GET URL.", 400)
 		return
@@ -40,6 +57,7 @@ func (handler Handler) ServeHTTP(conn http.ResponseWriter, req *http.Request) {
 
 	// handler only serves its `ref`
 	if blobRef != handler.ref {
+		log.Println("forbidden access to blobRef " + blobRef.String())
 		http.Error(conn, "Forbidden", 403)
 		return
 	}
@@ -47,7 +65,7 @@ func (handler Handler) ServeHTTP(conn http.ResponseWriter, req *http.Request) {
 	gethandler.ServeBlobRef(conn, req, handler.ref, handler.fetcher)
 }
 
-func CreateVideothumbnailHandler(ref blob.Ref, fetcher blob.Fetcher) http.Handler {
-	handler := Handler{ref: ref, fetcher: fetcher}
+func CreateVideothumbnailHandler(ref blob.Ref, fetcher blob.Fetcher, pid int) http.Handler {
+	handler := Handler{ref: ref, fetcher: fetcher, pid: pid}
 	return handler
 }
