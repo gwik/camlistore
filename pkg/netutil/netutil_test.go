@@ -17,8 +17,8 @@ limitations under the License.
 package netutil
 
 import (
+	"net"
 	"strconv"
-	"strings"
 	"testing"
 )
 
@@ -130,13 +130,11 @@ func TestListenOnLocalRandomPort(t *testing.T) {
 	}
 	defer l.Close()
 
-	addr := l.Addr().String()
-	pos := strings.LastIndex(addr, ":")
-	port, err := strconv.ParseInt(addr[pos+1:], 0, 0)
+	_, port, err := net.SplitHostPort(l.Addr().String())
 	if err != nil {
 		t.Fatal(err)
 	}
-	if port < 1 {
-		t.Fatalf("expected port(%d) to be > 0", port)
+	if p, _ := strconv.Atoi(port); p < 1 {
+		t.Fatalf("expected port(%d) to be > 0", p)
 	}
 }
