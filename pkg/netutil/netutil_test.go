@@ -17,6 +17,8 @@ limitations under the License.
 package netutil
 
 import (
+	"strconv"
+	"strings"
 	"testing"
 )
 
@@ -118,5 +120,23 @@ func TestHostPort(t *testing.T) {
 		if got != v.wantNetAddr {
 			t.Errorf("got: %v for %v, want: %v", got, v.baseURL, v.wantNetAddr)
 		}
+	}
+}
+
+func TestListenOnLocalRandomPort(t *testing.T) {
+	l, err := ListenOnLocalRandomPort()
+	if err != nil {
+		t.Fatalf("unexpected error %v", err)
+	}
+	defer l.Close()
+
+	addr := l.Addr().String()
+	pos := strings.LastIndex(addr, ":")
+	port, err := strconv.ParseInt(addr[pos+1:], 0, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if port < 1 {
+		t.Fatalf("expected port(%d) to be > 0", port)
 	}
 }

@@ -19,32 +19,16 @@ package videothumbnail
 import (
 	"crypto"
 	"io/ioutil"
+	"net/url"
 	"os"
-	"strconv"
-	"strings"
 	"testing"
+	"time"
 
 	"camlistore.org/pkg/blob"
 	"camlistore.org/pkg/magic"
 )
 
-func TestListenOnLocalRandomPort(t *testing.T) {
-	l, err := ListenOnLocalRandomPort()
-	if err != nil {
-		t.Fatalf("unexpected error %v", err)
-	}
-
-	defer l.Close()
-
-	addr := l.Addr().String()
-	pos := strings.LastIndex(addr, ":")
-	port, _ := strconv.Atoi(addr[:pos])
-	if port < 0 {
-		t.Fatalf("expected port to be 0", port)
-	}
-}
-
-func TestMakeThumbnail(t *testing.T) {
+func Store(t *testing.T) (blob.Fetcher, blob.Ref) {
 	inFile, err := os.Open("testdata/small.ogv")
 	if err != nil {
 		t.Fatal(err)
@@ -58,9 +42,16 @@ func TestMakeThumbnail(t *testing.T) {
 	if errAdd != nil {
 		t.Fatal(err)
 	}
+	return store, ref
+}
+
+func TestMakeThumbnail(t *testing.T) {
+	store, ref := Store(t)
 
 	tmpFile, _ := ioutil.TempFile(os.TempDir(), "camlitest")
-	errMake := MakeThumbnail(ref, store, tmpFile)
+	defer tmpFile.Close()
+	service := ThumbnailService{DefaultThumbnailer, 10 * time.Second}
+	errMake := service.Generate(ref, store, tmpFile)
 
 	if errMake != nil {
 		t.Fatal(errMake)
@@ -73,5 +64,24 @@ func TestMakeThumbnail(t *testing.T) {
 		t.Errorf("excepted thumbnail mimetype to be `image/jpeg` was `%s`", typ)
 	}
 
+}
+
+type failingThumbnailer struct{}
+
+func (_ failingThumbnailer) Command(_ url.URL) (string, []string) {
+	return "test", []string{"1", "-ne", "1"}
+}
+
+func TestMakeThumbnailFailure(t *testing.T) {
+	store, ref := Store(t)
+
+	tmpFile, _ := ioutil.TempFile(os.TempDir(), "camlitest")
 	defer tmpFile.Close()
+	service := ThumbnailService{failingThumbnailer{}, 10 * time.Second}
+	errMake := service.Generate(ref, store, tmpFile)
+
+	if errMake == nil {
+		t.Fatal("expected to fail.")
+	}
+
 }

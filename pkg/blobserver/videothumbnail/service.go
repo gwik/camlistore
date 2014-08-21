@@ -19,52 +19,25 @@ package videothumbnail
 import (
 	"errors"
 	"io"
-	"net"
 	"net/http"
 	"net/url"
 	"time"
 
 	"camlistore.org/pkg/blob"
+	"camlistore.org/pkg/netutil"
 )
 
 // Configuration
-var Thumbnail Thumbnailer = FfmpegThumbnail{}
+var DefaultThumbnailer Thumbnailer = FfmpegThumbnail{}
 
-func LoopbackInterfaceAddr() (net.Addr, error) {
-	interfaces, err := net.Interfaces()
-	if err != nil {
-		return nil, err
-	}
-	for _, inf := range interfaces {
-		if inf.Flags&(net.FlagLoopback|net.FlagUp) == net.FlagLoopback|net.FlagUp {
-			addrs, err := inf.Addrs()
-			if err != nil {
-				continue
-			}
-			if len(addrs) > 0 {
-				return addrs[0], nil
-			}
-		}
-	}
-	return nil, errors.New("No loopback interface found.")
+//TODO(gwik) handle concurrence
+type ThumbnailService struct {
+	thumbnailer Thumbnailer
+	Timeout     time.Duration
 }
 
-// Listen on random port number and return listener, port and error
-func ListenOnLocalRandomPort() (net.Listener, error) {
-	addr, err := LoopbackInterfaceAddr()
-	if err != nil {
-		return nil, err
-	}
-	ip := net.ParseIP(addr.String())
-	l, err := net.ListenTCP("tcp", &net.TCPAddr{IP: ip, Port: 0})
-	if err != nil {
-		return nil, err
-	}
-	return l, nil
-}
-
-func MakeThumbnail(ref blob.Ref, fetcher blob.Fetcher, writer io.Writer) error {
-	listener, err := ListenOnLocalRandomPort()
+func (ts ThumbnailService) Generate(ref blob.Ref, fetcher blob.Fetcher, writer io.Writer) error {
+	listener, err := netutil.ListenOnLocalRandomPort()
 	if err != nil {
 		return err
 	}
@@ -77,7 +50,7 @@ func MakeThumbnail(ref blob.Ref, fetcher blob.Fetcher, writer io.Writer) error {
 	}
 
 	done := make(chan bool)
-	command := BuildCmd(Thumbnail, uri, writer)
+	command := BuildCmd(ts.thumbnailer, uri, writer)
 	err = command.Start()
 	if err != nil {
 		return err
@@ -103,10 +76,13 @@ func MakeThumbnail(ref blob.Ref, fetcher blob.Fetcher, writer io.Writer) error {
 
 	select {
 	case <-done:
-		return nil
+		if command.ProcessState.Success() {
+			return nil
+		}
+		return errors.New("Thumbnail subprocess failed.")
 	case err := <-errChan:
 		return err
-	case <-time.After(10 * time.Second):
-		return errors.New("timeout")
+	case <-time.After(ts.Timeout):
+		return errors.New("Timeout.")
 	}
 }

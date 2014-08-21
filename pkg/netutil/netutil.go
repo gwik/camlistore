@@ -17,6 +17,7 @@ limitations under the License.
 package netutil
 
 import (
+	"errors"
 	"fmt"
 	"net"
 	"net/url"
@@ -66,4 +67,38 @@ func HostPort(urlStr string) (string, error) {
 		}
 	}
 	return hostPort, nil
+}
+
+// Find a loopback addr
+func LoopbackAddr() (net.Addr, error) {
+	interfaces, err := net.Interfaces()
+	if err != nil {
+		return nil, err
+	}
+	for _, inf := range interfaces {
+		if inf.Flags&(net.FlagLoopback|net.FlagUp) == net.FlagLoopback|net.FlagUp {
+			addrs, err := inf.Addrs()
+			if err != nil {
+				continue
+			}
+			if len(addrs) > 0 {
+				return addrs[0], nil
+			}
+		}
+	}
+	return nil, errors.New("No loopback interface found.")
+}
+
+// Listen on random port number
+func ListenOnLocalRandomPort() (net.Listener, error) {
+	addr, err := LoopbackAddr()
+	if err != nil {
+		return nil, err
+	}
+	ip := net.ParseIP(addr.String())
+	l, err := net.ListenTCP("tcp", &net.TCPAddr{IP: ip, Port: 0})
+	if err != nil {
+		return nil, err
+	}
+	return l, nil
 }

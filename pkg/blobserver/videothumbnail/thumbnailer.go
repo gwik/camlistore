@@ -24,7 +24,11 @@ import (
 )
 
 type Thumbnailer interface {
-	// uri is the url to the original blobRef
+	/*
+			   `uri` is the url to the original blobRef
+		     The command must return the thumbnail on the stdout.
+			   See FfmpegThumbnail.Command(...) for example
+	*/
 	Command(uri url.URL) (prog string, args []string)
 }
 
