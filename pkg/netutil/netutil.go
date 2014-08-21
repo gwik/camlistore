@@ -70,7 +70,7 @@ func HostPort(urlStr string) (string, error) {
 }
 
 // Find a loopback addr
-func LoopbackAddr() (net.Addr, error) {
+func LoopbackIP() (net.IP, error) {
 	interfaces, err := net.Interfaces()
 	if err != nil {
 		return nil, err
@@ -81,8 +81,11 @@ func LoopbackAddr() (net.Addr, error) {
 			if err != nil {
 				continue
 			}
-			if len(addrs) > 0 {
-				return addrs[0], nil
+			for _, addr := range addrs {
+				ip, _, err := net.ParseCIDR(addr.String())
+				if err == nil && ip.IsLoopback() {
+					return ip, nil
+				}
 			}
 		}
 	}
@@ -91,11 +94,10 @@ func LoopbackAddr() (net.Addr, error) {
 
 // Listen on random port number
 func ListenOnLocalRandomPort() (net.Listener, error) {
-	addr, err := LoopbackAddr()
+	ip, err := LoopbackIP()
 	if err != nil {
 		return nil, err
 	}
-	ip := net.ParseIP(addr.String())
 	l, err := net.ListenTCP("tcp", &net.TCPAddr{IP: ip, Port: 0})
 	if err != nil {
 		return nil, err

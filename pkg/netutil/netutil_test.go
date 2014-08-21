@@ -123,6 +123,17 @@ func TestHostPort(t *testing.T) {
 	}
 }
 
+func TestLoopbackIP(t *testing.T) {
+	addr, err := LoopbackIP()
+	if err != nil {
+		t.Fatal(err)
+	}
+	ip := net.ParseIP(addr.String())
+	if !ip.IsLoopback() {
+		t.Errorf("expected a loopback address: %s", addr.String())
+	}
+}
+
 func TestListenOnLocalRandomPort(t *testing.T) {
 	l, err := ListenOnLocalRandomPort()
 	if err != nil {
