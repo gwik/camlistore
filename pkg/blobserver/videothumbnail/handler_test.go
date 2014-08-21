@@ -26,12 +26,18 @@ import (
 	"camlistore.org/pkg/blob"
 )
 
+func refRequest(path string) *http.Request {
+	req, _ := http.NewRequest("GET", path, nil)
+	req.RemoteAddr = "[::1]:1234"
+	req.Host = "[::1]:5000"
+	return req
+}
+
 func TestHandlerWrongRef(t *testing.T) {
 	store := &blob.MemoryStore{}
 	ref, _ := blob.Parse("sha1-f1d2d2f924e986ac86fdf7b36c94bcdf32beec15")
 	wrongRefString := "sha1-e242ed3bffccdf271b7fbaf34ed72d089537b42f"
-	req, _ := http.NewRequest("GET", wrongRefString, nil)
-
+	req := refRequest("/" + wrongRefString)
 	handler := CreateVideothumbnailHandler(ref, store, 0)
 
 	resp := httptest.NewRecorder()
@@ -47,7 +53,7 @@ func TestHandlerRightRef(t *testing.T) {
 	data := "foobarbaz"
 	store := &blob.MemoryStore{}
 	ref, _ := store.AddBlob(crypto.SHA1, data)
-	req, _ := http.NewRequest("GET", ref.String(), nil)
+	req := refRequest("/" + ref.String())
 
 	handler := CreateVideothumbnailHandler(ref, store, 0)
 
@@ -67,7 +73,7 @@ func TestHandlerRightWithSuffix(t *testing.T) {
 	data := "foobarbaz"
 	store := &blob.MemoryStore{}
 	ref, _ := store.AddBlob(crypto.SHA1, data)
-	req, _ := http.NewRequest("GET", fmt.Sprintf("/%s/out.avi", ref.String()), nil)
+	req := refRequest(fmt.Sprintf("/%s/out.avi", ref.String()))
 
 	handler := CreateVideothumbnailHandler(ref, store, 0)
 

@@ -23,6 +23,7 @@ import (
 
 	"camlistore.org/pkg/blob"
 	"camlistore.org/pkg/blobserver/gethandler"
+	"camlistore.org/pkg/httputil"
 )
 
 type Handler struct {
@@ -31,23 +32,24 @@ type Handler struct {
 	pid     int
 }
 
+func (handler Handler) auth(req *http.Request) bool {
+	// check pid of the process ??
+	return httputil.IsLocalhost(req)
+}
+
 func (handler Handler) ServeHTTP(conn http.ResponseWriter, req *http.Request) {
 
-	// TODO: verify auth with ident
+	if !handler.auth(req) {
+		http.Error(conn, "Forbidden.", 403)
+		return
+	}
 
 	parts := strings.Split(req.URL.Path, "/")
-	if len(parts) < 1 {
+	if len(parts) < 2 {
 		http.Error(conn, "Malformed GET URL.", 400)
 		return
 	}
-	if parts[0] == "" {
-		parts = parts[1:]
-	}
-	if len(parts) < 1 {
-		http.Error(conn, "Malformed GET URL.", 400)
-		return
-	}
-	ref := parts[0]
+	ref := parts[1]
 
 	blobRef, ok := blob.Parse(ref)
 	if !ok || !blobRef.Valid() {
@@ -58,7 +60,7 @@ func (handler Handler) ServeHTTP(conn http.ResponseWriter, req *http.Request) {
 	// handler only serves its `ref`
 	if blobRef != handler.ref {
 		log.Println("forbidden access to blobRef " + blobRef.String())
-		http.Error(conn, "Forbidden", 403)
+		http.Error(conn, "Forbidden.", 403)
 		return
 	}
 
