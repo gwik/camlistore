@@ -17,10 +17,21 @@ limitations under the License.
 package videothumbnail
 
 import (
+	"errors"
+	"fmt"
+	"io"
 	"net"
+	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
+	"time"
+
+	"camlistore.org/pkg/blob"
 )
+
+// Configuration
+var Thumbnail Thumbnailer = FfmpegThumbnail{}
 
 // Listen on random port number and return listener, port and error
 func ListenOnLocalRandomPort() (net.Listener, int, error) {
@@ -36,3 +47,62 @@ func ListenOnLocalRandomPort() (net.Listener, int, error) {
 	}
 	return l, int(port), nil
 }
+
+func MakeThumbnail(ref blob.Ref, fetcher blob.Fetcher, writer io.Writer) error {
+	listener, port, err := ListenOnLocalRandomPort()
+	if err != nil {
+		return err
+	}
+	defer listener.Close()
+
+	uri := url.URL{
+		Scheme: "http",
+		Host:   fmt.Sprintf("127.0.0.1:%d", port),
+		Path:   ref.String(),
+	}
+
+	done := make(chan bool)
+	command := BuildCmd(Thumbnail, uri, writer)
+	err = command.Start()
+	if err != nil {
+		return err
+	}
+
+	errChan := make(chan error)
+	go func() {
+		err := http.Serve(listener,
+			CreateVideothumbnailHandler(ref, fetcher, command.Process.Pid))
+		errChan <- err
+	}()
+
+	go func() {
+		command.Wait()
+		done <- true
+	}()
+
+	defer func() {
+		listener.Close()
+		if !command.ProcessState.Exited() {
+			command.Process.Kill()
+		}
+	}()
+
+	select {
+	case <-done:
+		return nil
+	case err := <-errChan:
+		return err
+	case <-time.After(10 * time.Second):
+		return errors.New("timeout")
+	}
+}
+
+/*
+
+TODO
+
+- Build HTTP server and deal with shutdown (Close()? on the listener)
+- Communicate port and PID of process to the Handler in order to
+  check them with ident.
+
+*/

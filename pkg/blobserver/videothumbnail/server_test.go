@@ -17,8 +17,14 @@ limitations under the License.
 package videothumbnail
 
 import (
+	"crypto"
 	"fmt"
+	"io/ioutil"
+	"os"
 	"testing"
+
+	"camlistore.org/pkg/blob"
+	"camlistore.org/pkg/magic"
 )
 
 func TestListenOnLocalRandomPort(t *testing.T) {
@@ -37,4 +43,36 @@ func TestListenOnLocalRandomPort(t *testing.T) {
 		t.Fatalf("expected address (%v) to be 127.0.0.1:%d",
 			l.Addr().String(), port)
 	}
+}
+
+func TestMakeThumbnail(t *testing.T) {
+	inFile, err := os.Open("../../../test/testdata/small.ogv")
+	if err != nil {
+		t.Fatal(err)
+	}
+	store := &blob.MemoryStore{}
+	data, errRead := ioutil.ReadAll(inFile)
+	if errRead != nil {
+		t.Fatal(errRead)
+	}
+	ref, errAdd := store.AddBlob(crypto.SHA1, string(data))
+	if errAdd != nil {
+		t.Fatal(err)
+	}
+
+	tmpFile, _ := ioutil.TempFile(os.TempDir(), "camlitest")
+	errMake := MakeThumbnail(ref, store, tmpFile)
+
+	if errMake != nil {
+		t.Fatal(errMake)
+	}
+
+	tmpFile.Seek(0, 0)
+
+	typ, _ := magic.MIMETypeFromReader(tmpFile)
+	if typ != "image/jpeg" {
+		t.Errorf("excepted thumbnail mimetype to be `image/jpeg` was `%s`", typ)
+	}
+
+	defer tmpFile.Close()
 }
