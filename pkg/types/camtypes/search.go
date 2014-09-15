@@ -19,6 +19,7 @@ package camtypes
 import (
 	"bytes"
 	"fmt"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -109,6 +110,33 @@ type FileInfo struct {
 
 func (fi *FileInfo) IsImage() bool {
 	return strings.HasPrefix(fi.MIMEType, "image/")
+}
+
+var videoExtensions = map[string]bool{
+	".3gp":  true,
+	".aav":  true,
+	".asf":  true,
+	".avi":  true,
+	".dat":  true,
+	".m1v":  true,
+	".m2v":  true,
+	".m4v":  true,
+	".mkv":  true,
+	".mov":  true,
+	".mp4":  true,
+	".mpe":  true,
+	".mpeg": true,
+	".mpg":  true,
+	".ogg":  true,
+	".ogv":  true,
+	".wmv":  true,
+}
+
+func (fi *FileInfo) IsVideo() bool {
+	if videoExtensions[strings.ToLower(filepath.Ext(fi.FileName))] {
+		return true
+	}
+	return strings.HasPrefix(fi.MIMEType, "video/")
 }
 
 // ImageInfo describes an image file.
