@@ -17,6 +17,8 @@ limitations under the License.
 package netutil
 
 import (
+	"net"
+	"strconv"
 	"testing"
 )
 
@@ -118,5 +120,39 @@ func TestHostPort(t *testing.T) {
 		if got != v.wantNetAddr {
 			t.Errorf("got: %v for %v, want: %v", got, v.baseURL, v.wantNetAddr)
 		}
+	}
+}
+
+func testLocalhostResolver(t *testing.T, resolve func() (net.IP, error)) {
+	ip, err := resolve()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !ip.IsLoopback() {
+		t.Errorf("expected a loopback address: %s", ip)
+	}
+}
+
+func testLocalhost(t *testing.T) {
+	testLocalhostResolver(t, Localhost)
+}
+
+func testLoopbackIp(t *testing.T) {
+	testLocalhostResolver(t, loopbackIP)
+}
+
+func TestListenOnLocalRandomPort(t *testing.T) {
+	l, err := ListenOnLocalRandomPort()
+	if err != nil {
+		t.Fatalf("unexpected error %v", err)
+	}
+	defer l.Close()
+
+	_, port, err := net.SplitHostPort(l.Addr().String())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if p, _ := strconv.Atoi(port); p < 1 {
+		t.Fatalf("expected port(%d) to be > 0", p)
 	}
 }
