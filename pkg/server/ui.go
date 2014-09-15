@@ -41,6 +41,7 @@ import (
 	"camlistore.org/pkg/server/app"
 	"camlistore.org/pkg/sorted"
 	"camlistore.org/pkg/syncutil"
+	"camlistore.org/pkg/videothumbnail"
 	uistatic "camlistore.org/server/camlistored/ui"
 	closurestatic "camlistore.org/server/camlistored/ui/closure"
 	"camlistore.org/third_party/code.google.com/p/rsc/qr"
@@ -91,8 +92,9 @@ type UIHandler struct {
 	Cache blobserver.Storage // or nil
 
 	// Limit peak RAM used by concurrent image thumbnail calls.
-	resizeSem *syncutil.Sem
-	thumbMeta *ThumbMeta // optional thumbnail key->blob.Ref cache
+	resizeSem      *syncutil.Sem
+	thumbMeta      *ThumbMeta // optional thumbnail key->blob.Ref cache
+	videoThumbnail *videothumbnail.Service
 
 	// sourceRoot optionally specifies the path to root of Camlistore's
 	// source. If empty, the UI files must be compiled in to the
@@ -146,6 +148,8 @@ func uiFromConfig(ld blobserver.Loader, conf jsonconfig.Obj) (h http.Handler, er
 		sourceRoot:   conf.OptionalString("sourceRoot", ""),
 		resizeSem: syncutil.NewSem(int64(conf.OptionalInt("maxResizeBytes",
 			constants.DefaultMaxResizeMem))),
+		videoThumbnail: videothumbnail.ServiceFromConfig(
+			conf.OptionalObject("videoThumbnail")),
 	}
 	cachePrefix := conf.OptionalString("cache", "")
 	scaledImageConf := conf.OptionalObject("scaledImage")
@@ -593,12 +597,13 @@ func (ui *UIHandler) serveThumbnail(rw http.ResponseWriter, req *http.Request) {
 	}
 
 	th := &ImageHandler{
-		Fetcher:   ui.root.Storage,
-		Cache:     ui.Cache,
-		MaxWidth:  width,
-		MaxHeight: height,
-		ThumbMeta: ui.thumbMeta,
-		ResizeSem: ui.resizeSem,
+		Fetcher:        ui.root.Storage,
+		Cache:          ui.Cache,
+		MaxWidth:       width,
+		MaxHeight:      height,
+		ThumbMeta:      ui.thumbMeta,
+		ResizeSem:      ui.resizeSem,
+		VideoThumbnail: ui.videoThumbnail,
 	}
 	th.ServeHTTP(rw, req, blobref)
 }
