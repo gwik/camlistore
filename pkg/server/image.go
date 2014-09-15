@@ -42,6 +42,7 @@ import (
 	"camlistore.org/pkg/singleflight"
 	"camlistore.org/pkg/syncutil"
 	"camlistore.org/pkg/types"
+	"camlistore.org/pkg/videothumbnail"
 
 	_ "camlistore.org/third_party/github.com/nf/cr2"
 	"camlistore.org/third_party/go/pkg/image/jpeg"
@@ -65,6 +66,7 @@ type ImageHandler struct {
 	Square              bool
 	ThumbMeta           *ThumbMeta    // optional cache index for scaled images
 	ResizeSem           *syncutil.Sem // Limit peak RAM used by concurrent image thumbnail calls.
+	VideoThumbnail      *videothumbnail.Service
 }
 
 type subImager interface {
@@ -171,13 +173,12 @@ func cacheKey(bref string, width int, height int) string {
 	return fmt.Sprintf("scaled:%v:%dx%d:tv%v", bref, width, height, images.ThumbnailVersion())
 }
 
-// ScaledCached reads the scaled version of the image in file,
-// if it is in cache and writes it to buf.
+// scaledCached reads the scaled version of the image from the cache with key
+// and writes it to buf.
 //
 // On successful read and population of buf, the returned format is non-empty.
 // Almost all errors are not interesting. Real errors will be logged.
-func (ih *ImageHandler) scaledCached(buf *bytes.Buffer, file blob.Ref) (format string) {
-	key := cacheKey(file.String(), ih.MaxWidth, ih.MaxHeight)
+func (ih *ImageHandler) scaledCached(buf *bytes.Buffer, key string) (format string) {
 	br, err := ih.ThumbMeta.Get(key)
 	if err == errCacheMiss {
 		return
@@ -226,13 +227,7 @@ func imageConfigFromReader(r io.Reader) (io.Reader, image.Config, error) {
 	return io.MultiReader(header, r), conf, err
 }
 
-func (ih *ImageHandler) scaleImage(fileRef blob.Ref) (*formatAndImage, error) {
-	fr, err := schema.NewFileReader(ih.Fetcher, fileRef)
-	if err != nil {
-		return nil, err
-	}
-	defer fr.Close()
-
+func (ih *ImageHandler) scaleImage(fr io.Reader) (*formatAndImage, error) {
 	sr := types.NewStatsReader(imageBytesFetchedVar, fr)
 	sr, conf, err := imageConfigFromReader(sr)
 	if err != nil {
@@ -297,6 +292,39 @@ func (ih *ImageHandler) scaleImage(fileRef blob.Ref) (*formatAndImage, error) {
 // gallery to a big audience)
 var singleResize singleflight.Group
 
+// originalVideoThumbnail get from cache or generate the non-resized video thumbnail.
+// cacheKey(file.String(), 0, 0) would be the cache key for the
+// original size thumbnail image.
+func (ih *ImageHandler) originalVideoThumbnail(file blob.Ref) (io.Reader, error) {
+	// TODO(gwik) update CacheHit/Miss ???
+	if ih.VideoThumbnail == nil {
+		return nil, errors.New("Video thumbnailing not available.")
+	}
+	useCache := ih.ThumbMeta != nil && !disableThumbCache
+	buf := new(bytes.Buffer)
+	key := cacheKey(file.String(), 0, 0)
+	if useCache {
+		format := ih.scaledCached(buf, key)
+		if format != "" {
+			return buf, nil
+		}
+	}
+
+	// rename singleResize ?
+	_, err := singleResize.Do(key, func() (interface{}, error) {
+		err := ih.VideoThumbnail.Generate(file, buf, ih.Fetcher)
+		return nil, err
+	})
+
+	if err != nil {
+		return nil, err
+	}
+	if useCache {
+		ih.cacheScaled(buf.Bytes(), key)
+	}
+	return bytes.NewReader(buf.Bytes()), nil
+}
+
 func (ih *ImageHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request, file blob.Ref) {
 	if !httputil.IsGet(req) {
 		http.Error(rw, "Invalid method", 400)
@@ -330,7 +358,7 @@ func (ih *ImageHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request, fil
 	cacheHit := false
 	if ih.ThumbMeta != nil && !disableThumbCache {
 		var buf bytes.Buffer
-		format = ih.scaledCached(&buf, file)
+		format = ih.scaledCached(&buf, key)
 		if format != "" {
 			cacheHit = true
 			imageData = buf.Bytes()
@@ -339,8 +367,29 @@ func (ih *ImageHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request, fil
 
 	if !cacheHit {
 		thumbCacheMiss.Add(1)
+
+		var reader io.Reader
+
+		// is a video ?
+		if v, err := strconv.ParseBool(req.FormValue("v")); err == nil && v {
+			buf, err := ih.originalVideoThumbnail(file)
+			if err != nil {
+				http.Error(rw, err.Error(), 500)
+				return
+			}
+			reader = buf
+		} else {
+			fr, err := schema.NewFileReader(ih.Fetcher, file)
+			if err != nil {
+				http.Error(rw, err.Error(), 500)
+				return
+			}
+			defer fr.Close()
+			reader = fr
+		}
+
 		imi, err := singleResize.Do(key, func() (interface{}, error) {
-			return ih.scaleImage(file)
+			return ih.scaleImage(reader)
 		})
 		if err != nil {
 			http.Error(rw, err.Error(), 500)

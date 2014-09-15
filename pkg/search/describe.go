@@ -486,14 +486,17 @@ func (b *DescribedBlob) thumbnail(thumbSize int) (path string, width, height int
 	if content, ok := b.ContentRef(); ok {
 		peer := b.peerBlob(content)
 		if peer.File != nil {
-			ii := peer.Image
-			if peer.File.IsImage() && ii != nil && ii.Height > 0 && ii.Width > 0 {
-				image := fmt.Sprintf("thumbnail/%s/%s?mh=%d&tv=%s", peer.BlobRef,
-					url.QueryEscape(peer.File.FileName), thumbSize, images.ThumbnailVersion())
-				mw, mh := images.ScaledDimensions(
-					int(ii.Width), int(ii.Height),
-					MaxImageSize, thumbSize)
-				return image, mw, mh, true
+			if peer.File.IsImage() || peer.File.IsVideo() {
+				image := fmt.Sprintf("thumbnail/%s/%s?mh=%d&tv=%s&v=%t",
+					peer.BlobRef, url.QueryEscape(peer.File.FileName), thumbSize,
+					images.ThumbnailVersion(), peer.File.IsVideo())
+				if ii := peer.Image; ii != nil && ii.Height > 0 && ii.Width > 0 {
+					mw, mh := images.ScaledDimensions(
+						int(ii.Width), int(ii.Height),
+						MaxImageSize, thumbSize)
+					return image, mw, mh, true
+				}
+				return image, 0, thumbSize, true
 			}
 
 			// TODO: different thumbnails based on peer.File.MIMEType.
