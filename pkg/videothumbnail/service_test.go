@@ -70,11 +70,13 @@ func TestStorage(t *testing.T) {
 }
 
 func TestMakeThumbnail(t *testing.T) {
+	service := NewService(DefaultThumbnailer, 2*time.Second, 5)
+	if err := service.Available(); err != nil {
+		t.Skip(err)
+	}
 	store, ref := storageAndBlobRef(t)
-
 	tmpFile, _ := ioutil.TempFile(os.TempDir(), "camlitest")
 	defer tmpFile.Close()
-	service := NewService(DefaultThumbnailer, 2*time.Second, 5)
 	errMake := service.Generate(ref, store, tmpFile)
 
 	if errMake != nil {
@@ -98,7 +100,6 @@ func (failingThumbnailer) Command(url.URL) (string, []string) {
 
 func TestMakeThumbnailFailure(t *testing.T) {
 	store, ref := storageAndBlobRef(t)
-
 	service := NewService(failingThumbnailer{}, 2*time.Second, 5)
 	errMake := service.Generate(ref, store, ioutil.Discard)
 
@@ -115,8 +116,11 @@ func (sleepyThumbnailer) Command(url.URL) (string, []string) {
 }
 
 func TestThumbnailGenerateTimeout(t *testing.T) {
-	store, ref := storageAndBlobRef(t)
 	service := NewService(sleepyThumbnailer{}, time.Duration(0), 5)
+	if err := service.Available(); err != nil {
+		t.Skip(err)
+	}
+	store, ref := storageAndBlobRef(t)
 	err := service.Generate(ref, store, ioutil.Discard)
 
 	if err != errTimeout {

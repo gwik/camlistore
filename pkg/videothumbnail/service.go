@@ -33,6 +33,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"os/exec"
 	"time"
 
 	"camlistore.org/pkg/blob"
@@ -130,4 +131,13 @@ func (s *Service) Generate(
 	case <-time.After(s.timeout):
 		return errTimeout
 	}
+}
+
+// Available tells whether the service can run.
+func (s *Service) Available() error {
+	prog, _ := s.thumbnailer.Command(url.URL{Path: "/"})
+	if _, err := exec.LookPath(prog); err != nil {
+		return err
+	}
+	return nil
 }

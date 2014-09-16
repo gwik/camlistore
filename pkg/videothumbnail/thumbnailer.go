@@ -81,7 +81,7 @@ func (ct *configThumbnailer) Command(uri url.URL) (string, []string) {
 type logWriter struct{}
 
 func (logWriter) Write(p []byte) (int, error) {
-	log.Print("%s", p)
+	log.Printf("%s", p)
 	return len(p), nil
 }
 

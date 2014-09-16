@@ -82,6 +82,7 @@ func TestImageThumbnailNoCaches(t *testing.T) {
 	ref := addFile(t, storage, imageFilepath)
 	maxWidth := 40
 	maxHeight := 40
+	handler := newTestImageHandler(storage, maxWidth, maxHeight, false)
 	path := fmt.Sprintf(
 		"thumbnail/%s/%s?mh=%d&tv=%s&v=%t",
 		ref, path.Base(imageFilepath), maxHeight, images.ThumbnailVersion(), false)
@@ -91,8 +92,6 @@ func TestImageThumbnailNoCaches(t *testing.T) {
 	}
 
 	resp := httptest.NewRecorder()
-	handler := newTestImageHandler(storage, maxWidth, maxHeight, false)
-
 	handler.ServeHTTP(resp, req, ref)
 	if resp.Code != 200 {
 		t.Fatal("expected 200 status code.")
@@ -119,6 +118,10 @@ func TestVideoThumbnailNoCaches(t *testing.T) {
 	ref := addFile(t, storage, videoFilepath)
 	maxWidth := 40
 	maxHeight := 40
+	handler := newTestImageHandler(storage, maxWidth, maxHeight, false)
+	if err := handler.VideoThumbnail.Available(); err != nil {
+		t.Skip(err)
+	}
 	path := fmt.Sprintf(
 		"thumbnail/%s/%s?mh=%d&tv=%s&v=%t",
 		ref, path.Base(imageFilepath), maxHeight, images.ThumbnailVersion(), true)
@@ -128,8 +131,6 @@ func TestVideoThumbnailNoCaches(t *testing.T) {
 	}
 
 	resp := httptest.NewRecorder()
-	handler := newTestImageHandler(storage, maxWidth, maxHeight, false)
-
 	handler.ServeHTTP(resp, req, ref)
 	if resp.Code != 200 {
 		t.Fatal("expected 200 status code.")
@@ -161,6 +162,10 @@ func TestVideoThumbnailCached(t *testing.T) {
 	ref := addFile(t, storage, videoFilepath)
 	maxWidth := 40
 	maxHeight := 40
+	handler := newTestImageHandler(storage, maxWidth, maxHeight, true)
+	if err := handler.VideoThumbnail.Available(); err != nil {
+		t.Skip(err)
+	}
 	path := fmt.Sprintf(
 		"thumbnail/%s/%s?mh=%d&tv=%s&v=%t",
 		ref, path.Base(imageFilepath), maxHeight, images.ThumbnailVersion(), true)
@@ -170,7 +175,6 @@ func TestVideoThumbnailCached(t *testing.T) {
 	}
 
 	resp := httptest.NewRecorder()
-	handler := newTestImageHandler(storage, maxWidth, maxHeight, true)
 	handler.ServeHTTP(resp, req, ref)
 	if resp.Code != 200 {
 		t.Fatal("Expected 200 status code.")
